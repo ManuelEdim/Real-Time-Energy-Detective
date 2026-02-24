@@ -13,6 +13,7 @@ const Dashboard = () => {
   const [aiStatus, setAiStatus] = useState({ state: 'Idle', confidence: 'N/A' });
   const [isModelLoading, setIsModelLoading] = useState(false); 
 
+  // Load and Format JSON Data
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -39,43 +40,36 @@ const Dashboard = () => {
     loadData();
   }, []);
 
-  // UPDATED: AI Inference Logic with Thread Yielding
+  // AI Inference Logic
   const handleDetect = async () => {
     if (!data || data.length < 60) {
       toast.warning("Insufficient data. 60 points required for analysis.");
       return;
     }
 
-    // 1. Trigger UI states immediately
     setIsModelLoading(true);
     setAiStatus({ ...aiStatus, state: 'Analyzing...' });
     
-    // 2. Yield the thread for 100ms to allow the browser to RENDER the loader
-    setTimeout(async () => {
-      try {
-        const windowData = data.slice(-60).map(d => d.value);
-        
-        // This is the heavy CPU-blocking operation
-        const result = await loadAndPredict(windowData);
+    const detectionPromise = loadAndPredict(data.slice(-60).map(d => d.value));
 
+    toast.promise(detectionPromise, {
+      loading: 'Detective is synchronizing 128-unit Bi-LSTM engine...',
+      success: (result) => {
+        setIsModelLoading(false);
         if (result) {
           setAiStatus({ 
             state: result.isOn ? 'FRIDGE ON' : 'FRIDGE OFF', 
             confidence: result.confidence || '94.2%' 
           });
-          toast.success(`Detection Complete: Appliance is ${result.isOn ? 'Active' : 'Standby'}`);
-        } else {
-          throw new Error("Analysis failed");
+          return `Detection Complete: 20W Signature ${result.isOn ? 'Identified' : 'Not Found'}`;
         }
-      } catch (err) {
-        console.error("Inference Error:", err.message);
-        toast.error(`Inference Error: ${err.message}`);
-        setAiStatus({ state: 'Error', confidence: 'N/A' });
-      } finally {
-        // 3. Close loader after math is complete
+        throw new Error("Analysis failed");
+      },
+      error: (err) => {
         setIsModelLoading(false);
-      }
-    }, 100); 
+        return `Inference Error: ${err.message}`;
+      },
+    });
   };
 
   const exportAudit = () => {
@@ -167,6 +161,7 @@ const Dashboard = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
+          {/* Main Chart Card */}
           <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base md:text-lg font-semibold flex items-center gap-2">
@@ -177,6 +172,7 @@ const Dashboard = () => {
               </div>
             </div>
             
+            {/* RESOLVED: Explicit height + relative + min-width to clear Recharts -1 error */}
             <div className="h-[300px] md:h-80 w-full bg-white rounded-xl relative overflow-hidden min-w-0">
               {data === null ? (
                 <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 animate-pulse">
@@ -221,6 +217,7 @@ const Dashboard = () => {
             </div>
           </div>
 
+          {/* System Intelligence Breakdown */}
           <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
             <h3 className="text-base md:text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
               <Cpu className="text-indigo-500" size={20} /> System Intelligence
@@ -245,11 +242,12 @@ const Dashboard = () => {
           </div>
         </div>
 
+        {/* Sidebar Cards */}
         <div className="space-y-6">
           <div className="bg-indigo-900 text-white p-6 rounded-2xl shadow-lg border-b-4 border-indigo-700">
             <p className="text-indigo-200 text-[10px] mb-1 uppercase tracking-widest font-bold text-center">AI STATUS</p>
             <h3 className="text-2xl md:text-4xl font-black mb-4 text-center truncate">{aiStatus.state}</h3>
-            <div className="flex items-center gap-2 text-sm bg-indigo-800/50 p-2 rounded-lg justify-center">
+            <div className="flex items-center gap-2 text-xs bg-indigo-800/50 p-2 rounded-lg justify-center">
               <ShieldCheck size={14} className="text-emerald-400" />
               <span>Confidence: <b>{aiStatus.confidence}</b></span>
             </div>
@@ -273,6 +271,7 @@ const Dashboard = () => {
         </div>
       </div>
       
+      {/* CSS Animation for the custom loader bar */}
       <style jsx="true">{`
         @keyframes loading {
           0% { transform: translateX(-100%); }

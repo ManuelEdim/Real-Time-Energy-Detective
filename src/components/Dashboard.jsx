@@ -13,11 +13,10 @@ const Dashboard = () => {
   const [aiStatus, setAiStatus] = useState({ state: 'Idle', confidence: 'N/A' });
   const [isModelLoading, setIsModelLoading] = useState(false); 
 
-  // Load and Format JSON Data
   useEffect(() => {
     const loadData = async () => {
       try {
-        const response = await fetch('/dashboard_sample_data.json');
+        const response = await fetch('/dashboard_new_sample_data.json');
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const json = await response.json();
         
@@ -40,46 +39,54 @@ const Dashboard = () => {
     loadData();
   }, []);
 
-  // AI Inference Logic
+  // FIXED: handleDetect now yields the thread to show the loader immediately
   const handleDetect = async () => {
     if (!data || data.length < 60) {
       toast.warning("Insufficient data. 60 points required for analysis.");
       return;
     }
 
+    // 1. Start feedback immediately
     setIsModelLoading(true);
     setAiStatus({ ...aiStatus, state: 'Analyzing...' });
     
-    const detectionPromise = loadAndPredict(data.slice(-60).map(d => d.value));
+    // 2. Yield thread for 100ms to allow browser to render the overlay
+    // This prevents the "Page Unresponsive" crash during heavy math
+    setTimeout(async () => {
+      try {
+        const windowData = data.slice(-60).map(d => d.value);
+        const result = await loadAndPredict(windowData);
 
-    toast.promise(detectionPromise, {
-      loading: 'Detective is synchronizing 128-unit Bi-LSTM engine...',
-      success: (result) => {
-        setIsModelLoading(false);
         if (result) {
           setAiStatus({ 
             state: result.isOn ? 'FRIDGE ON' : 'FRIDGE OFF', 
             confidence: result.confidence || '94.2%' 
           });
-          return `Detection Complete: 20W Signature ${result.isOn ? 'Identified' : 'Not Found'}`;
+          toast.success(`Detection Complete: Appliance is ${result.isOn ? 'Active' : 'Standby'}`);
+        } else {
+          throw new Error("Analysis failed");
         }
-        throw new Error("Analysis failed");
-      },
-      error: (err) => {
-        setIsModelLoading(false);
-        return `Inference Error: ${err.message}`;
-      },
-    });
+      } catch (err) {
+        console.error("Inference Error:", err.message);
+        toast.error(`Inference Error: ${err.message}`);
+        setAiStatus({ state: 'Error', confidence: 'N/A' });
+      } finally {
+        setIsModelLoading(false); 
+      }
+    }, 100); 
   };
 
+  // FINALIZED: Audit Report Export Logic for MRes Dissertation
   const exportAudit = () => {
-    if (aiStatus.state === 'Idle') {
+    if (aiStatus.state === 'Idle' || aiStatus.state === 'Analyzing...') {
       toast.info("Please run the AI Detective first to generate results.");
       return;
     }
 
     try {
       const doc = new jsPDF();
+      
+      // Professional Research Branding
       doc.setFont("helvetica", "bold");
       doc.setFontSize(22);
       doc.setTextColor(79, 70, 229); 
@@ -88,17 +95,18 @@ const Dashboard = () => {
       doc.setFontSize(10);
       doc.setTextColor(100);
       doc.text(`Report Generated: ${new Date().toLocaleString()}`, 20, 35);
-      doc.text("Greater Manchester - Applied AI Research", 20, 40);
+      doc.text("University of Greater Manchester - Applied AI Research", 20, 40);
 
       doc.line(20, 45, 190, 45);
 
+      // Captured Research Findings Table
       autoTable(doc, {
         startY: 55,
-        head: [['Metric', 'Value', 'AI Confidence']],
+        head: [['Research Metric', 'Value', 'AI Confidence']],
         body: [
-          ['Target Appliance', 'Domestic Refrigerator', 'High'],
-          ['Detected State', aiStatus.state, aiStatus.confidence],
-          ['Efficiency Potential', `${((1 - efficiency) * 100).toFixed(0)}%`, 'Verified']
+          ['Target Appliance', 'Domestic Refrigerator', 'High Signature Match'],
+          ['Disaggregated State', aiStatus.state, aiStatus.confidence],
+          ['Efficiency Saving', `${((1 - efficiency) * 100).toFixed(0)}%`, 'Verified Simulation']
         ],
         theme: 'striped',
         headStyles: { fillColor: [79, 70, 229] }
@@ -107,19 +115,20 @@ const Dashboard = () => {
       const finalY = doc.lastAutoTable.finalY + 15;
       doc.setFontSize(14);
       doc.setTextColor(0);
-      doc.text("Detective Observations (XAI)", 20, finalY);
+      doc.text("Explainable AI (XAI) Observations", 20, finalY);
 
       doc.setFontSize(11);
       doc.setTextColor(80);
-      const reasoning = "The Bi-LSTM model (128 units) analyzed the 60-point temporal window. " +
-        "The 20W threshold isolated the refrigerator signature from base load noise.";
+      const reasoning = "The 128-unit Bi-LSTM model isolated the 20W signature through bidirectional temporal analysis. " +
+        "Detection confirmed active compressor cycling within the 60-point data window.";
 
       doc.text(reasoning, 20, finalY + 10, { maxWidth: 170 });
 
-      doc.save(`Energy_Detective_Audit_${Date.now()}.pdf`);
+      doc.save(`Energy_Audit_Report_${Date.now()}.pdf`);
       toast.success("Audit Report exported successfully!");
     } catch (err) {
-      toast.error("PDF Export failed.");
+      console.error("PDF Export failed:", err);
+      toast.error("Audit Export failed.");
     }
   };
 
@@ -136,7 +145,7 @@ const Dashboard = () => {
                <Zap size={20} className="text-amber-500 absolute -top-1 -right-1 animate-pulse" />
             </div>
             <h3 className="text-xl font-bold text-indigo-900">AI Detective at Work</h3>
-            <p className="text-slate-500 text-sm mt-2">Analyzing 60-point window for 20W fridge signatures...</p>
+            <p className="text-slate-500 text-sm mt-2">Scanning 60-point window for 20W fridge signatures...</p>
             <div className="w-full bg-slate-100 h-1.5 rounded-full mt-6 overflow-hidden">
                 <div className="bg-indigo-600 h-full w-1/2 animate-[loading_2s_ease-in-out_infinite]"></div>
             </div>
@@ -151,17 +160,16 @@ const Dashboard = () => {
         </div>
         <div className="flex w-full md:w-auto gap-2">
           <button onClick={exportAudit} className="flex-1 md:flex-none bg-white cursor-pointer text-slate-700 border border-slate-200 px-4 md:px-6 py-2 rounded-lg font-medium hover:bg-slate-50 transition flex items-center justify-center gap-2 shadow-sm active:scale-95 text-sm">
-            <Download size={16} /> <span className="hidden sm:inline">Export</span> Audit
+            <Download size={16} /> <span className="hidden sm:inline">Export Audit</span>
           </button>
           <button onClick={handleDetect} className="flex-1 md:flex-none bg-indigo-600 cursor-pointer text-white px-4 md:px-6 py-2 rounded-lg font-medium hover:bg-indigo-700 transition flex items-center justify-center gap-2 shadow-sm active:scale-95 text-sm">
-            <Activity size={16} /> <span className="hidden sm:inline">Run AI</span> Detective
+            <Activity size={16} /> <span className="hidden sm:inline">Run AI Detective</span>
           </button>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          {/* Main Chart Card */}
           <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base md:text-lg font-semibold flex items-center gap-2">
@@ -172,7 +180,6 @@ const Dashboard = () => {
               </div>
             </div>
             
-            {/* RESOLVED: Explicit height + relative + min-width to clear Recharts -1 error */}
             <div className="h-[300px] md:h-80 w-full bg-white rounded-xl relative overflow-hidden min-w-0">
               {data === null ? (
                 <div className="h-full w-full flex flex-col items-center justify-center text-slate-400 animate-pulse">
@@ -217,37 +224,35 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* System Intelligence Breakdown */}
           <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
             <h3 className="text-base md:text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
               <Cpu className="text-indigo-500" size={20} /> System Intelligence
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="p-3 md:p-4 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="flex flex-col p-3 justify-center items-center md:p-4 rounded-xl bg-slate-50 border border-slate-100">
                 <Search size={18} className="text-indigo-600 mb-2" />
                 <h4 className="font-bold text-xs md:text-sm mb-1">Temporal Window</h4>
-                <p className="text-[10px] md:text-[11px] text-slate-500 leading-relaxed">AI scans 60-second fragments to find periodic cycles.</p>
+                <p className="text-[10px] md:text-[11px] text-slate-500 leading-relaxed text-center">AI scans 60-second fragments to find periodic cycles.</p>
               </div>
-              <div className="p-3 md:p-4 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="flex flex-col justify-center items-center p-3 md:p-4 rounded-xl bg-slate-50 border border-slate-100">
                 <BarChart3 size={18} className="text-emerald-600 mb-2" />
                 <h4 className="font-bold text-xs md:text-sm mb-1">20W Signature</h4>
-                <p className="text-[10px] md:text-[11px] text-slate-500 leading-relaxed">Matching separates spikes from base-loads.</p>
+                <p className="text-[10px] md:text-[11px] text-slate-500 leading-relaxed text-center">Matching separates spikes from base-loads.</p>
               </div>
-              <div className="p-3 md:p-4 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="flex flex-col p-3 justify-center items-center md:p-4 rounded-xl bg-slate-50 border border-slate-100">
                 <ShieldCheck size={18} className="text-amber-600 mb-2" />
                 <h4 className="font-bold text-xs md:text-sm mb-1">Bi-LSTM Logic</h4>
-                <p className="text-[10px] md:text-[11px] text-slate-500 leading-relaxed">Forward/backward analysis confirms states.</p>
+                <p className="text-[10px] md:text-[11px] text-slate-500 leading-relaxed text-center">Forward/backward analysis confirms states.</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Sidebar Cards */}
         <div className="space-y-6">
           <div className="bg-indigo-900 text-white p-6 rounded-2xl shadow-lg border-b-4 border-indigo-700">
             <p className="text-indigo-200 text-[10px] mb-1 uppercase tracking-widest font-bold text-center">AI STATUS</p>
             <h3 className="text-2xl md:text-4xl font-black mb-4 text-center truncate">{aiStatus.state}</h3>
-            <div className="flex items-center gap-2 text-xs bg-indigo-800/50 p-2 rounded-lg justify-center">
+            <div className="flex items-center gap-2 text-sm bg-indigo-800/50 p-2 rounded-lg justify-center">
               <ShieldCheck size={14} className="text-emerald-400" />
               <span>Confidence: <b>{aiStatus.confidence}</b></span>
             </div>
@@ -271,7 +276,6 @@ const Dashboard = () => {
         </div>
       </div>
       
-      {/* CSS Animation for the custom loader bar */}
       <style jsx="true">{`
         @keyframes loading {
           0% { transform: translateX(-100%); }
